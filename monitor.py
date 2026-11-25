@@ -2,6 +2,7 @@ import os
 import json
 import requests
 from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
 URL = os.environ["TARGET_URL"]
 SELECTOR = os.environ.get("SELECTOR", "")   # اختیاری: مثلاً "li.news-item"
@@ -14,22 +15,29 @@ def normalize(text):
     return " ".join(text.split())
 
 
+
+def fetch_html():
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(URL, wait_until="networkidle", timeout=60000)
+        page.wait_for_timeout(3000)   # چند ثانیه صبر تا محتوا کامل بیاد
+        html = page.content()
+        browser.close()
+    return html
+
 def get_items():
-    r = requests.get(URL, headers={"User-Agent": "Mozilla/5.0"}, timeout=20)
-    r.raise_for_status()
-    soup = BeautifulSoup(r.text, "html.parser")
+    soup = BeautifulSoup(fetch_html(), "html.parser")
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
 
     items = set()
     if SELECTOR:
-        # هر المنت منطبق با سلکتور = یک آیتم
         for el in soup.select(SELECTOR):
             t = normalize(el.get_text(" "))
             if t:
                 items.add(t)
     else:
-        # بدون سلکتور: هر خط متن = یک آیتم
         for line in soup.get_text("\n").splitlines():
             t = normalize(line)
             if len(t) > 3:
